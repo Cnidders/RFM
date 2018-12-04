@@ -7,24 +7,46 @@ library(data.table)
 library(dplyr)
 library(ISOweek)
 
-data <- read_delim("Cohortselectie_A_B_test_nieuwe_dropdown.csv", 
-                   ";", escape_double = FALSE, col_types = cols(`Product Number` = col_integer(), 
-                                                                `Standard Net Revenue` = col_number(), 
-                                                                `Standard Net Revenue Product Detail Page` = col_number(), 
-                                                                `Standard Net Revenue Promo Group` = col_number(), 
-                                                                `Standard Net Revenue Purchase List` = col_number()), 
-                   locale = locale(date_names = "nl", decimal_mark = ",", 
-                                   grouping_mark = "."), trim_ws = TRUE)
+source("/home/c.stienen/Info/DelphiDBIconnect.R")
+data <- dbGetQuery(Delphi,"SELECT        OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, SUBKLANT.KLANTNUMMER, SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER AS Expr1, SUBKLANT.MARKETING_NUMMER, 
+                         SUBKLANT.MARKETING_OMSCHRIJVING, SK_DOELGROEP.DGPCODE, SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, PRODUCT_HIERARCHIE.NIVEAU_01, 
+                 PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03, FACTUURREGEL.ORDERNUMMER, FACTUURREGEL.ORDERDATUM_ID, SUM(FACTUURREGEL.NETTO_FACTUURREGELBEDRAG) AS Expr2, 
+                 COUNT(FACTUURREGEL.FACTUURREGEL_ID) AS Expr3, SUM(FACTUURREGEL.AANTAL) AS Expr4, 
+                 SUM(CASE WHEN FACTUURREGEL.TE_FACTUREREN_GEWICHT = 0 THEN FACTUURREGEL.AANTAL_STANDAARD_EENH ELSE FACTUURREGEL.TE_FACTUREREN_GEWICHT END) AS Expr5
+                 FROM            Budget.dbo.Doelgroep AS SK_DOELGROEP RIGHT OUTER JOIN
+                 Dwh.DIM_SUBKLANT AS SUBKLANT ON SK_DOELGROEP.MKSCODE = SUBKLANT.MARKETINGSEGMENTCODE INNER JOIN
+                 Dwh.FACT_FACTUURREGEL AS FACTUURREGEL ON SUBKLANT.SUBKLANT_ID = FACTUURREGEL.SUBKLANT_ID INNER JOIN
+                 Dwh.DIM_FACTURERINGSSOORT AS FACTURERINGSSOORT ON FACTURERINGSSOORT.FACTURERINGSSOORT_ID = FACTUURREGEL.FACTURERINGSSOORT_ID INNER JOIN
+                 Dwh.DIM_DATUM AS OMZETDATUM ON OMZETDATUM.DATUM_ID = FACTUURREGEL.OMZETDATUM_ID INNER JOIN
+                 Dwh.DIM_ARTIKEL AS ARTIKEL ON FACTUURREGEL.ARTIKEL_ID = ARTIKEL.ARTIKEL_ID INNER JOIN
+                 Dwh.DIM_PRODHIERARCHIE AS PRODUCT_HIERARCHIE ON PRODUCT_HIERARCHIE.PRODUCTHIERARCHIE_CODE = ARTIKEL.PRODUCTHIERARCHIE
+                 WHERE        (OMZETDATUM.AANTAL_STATISTIEK_WEKEN_GELEDEN BETWEEN - 52 AND - 1) AND (FACTURERINGSSOORT.FACTURERINGSSOORT NOT IN ('005', '009')) AND (ARTIKEL.HOOFDPRODUKTGROEP_NIVEAU_1 <> '07') AND 
+                 (SUBKLANT.KLANTCODE <> '6')
+                 GROUP BY OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, SUBKLANT.KLANTNUMMER, SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER, SUBKLANT.MARKETING_NUMMER, 
+                 SUBKLANT.MARKETING_OMSCHRIJVING, SK_DOELGROEP.DGPCODE, SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, PRODUCT_HIERARCHIE.NIVEAU_01, 
+                 PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03, FACTUURREGEL.ORDERNUMMER, FACTUURREGEL.ORDERDATUM_ID")
+dbDisconnect(Delphi)
+rm(Delphi)
+
+
 #View(data)
 str(data)
-data$`Submit Timestamp` <- as.Date(data$`Submit Timestamp`)
-#data <- subset(data, `Submit Timestamp` < "2018-03-11 00:00:00")
+data$`ORDERDATUM_ID` <- as.Date(data$`ORDERDATUM_ID`)
+colnames(data)[colnames(data) == 'Expr1'] <- "KlantnummerSubnr"
+colnames(data)[colnames(data) == 'Expr2'] <- "nettoFactuurOmzet"
+colnames(data)[colnames(data) == 'Expr3'] <- "aantalFactuurregels"
+colnames(data)[colnames(data) == 'Expr4'] <- "aantalVkeh"
+colnames(data)[colnames(data) == 'Expr5'] <- "aantalSteh"
 
-colnames(data)[colnames(data) == 'Standard Net Revenue'] <- 'Revenue'
-colnames(data)[colnames(data) == 'Submit Timestamp'] <- 'Orderdate'
-colnames(data)[colnames(data) == 'Sales Group And Description'] <- 'Salesgroup'
-colnames(data)[colnames(data) == 'Organization Number'] <- 'CustomerId'
-colnames(data)[colnames(data) == 'Order Id'] <- 'OrderId'
+dataBackup <- data
+data <- dataBackup
+data <- subset(data, DGPCODE == 6)
+
+colnames(data)[colnames(data) == 'nettoFactuurOmzet'] <- 'Revenue'
+colnames(data)[colnames(data) == 'ORDERDATUM_ID'] <- 'Orderdate'
+colnames(data)[colnames(data) == 'MARKETING_OMSCHRIJVING'] <- 'Salesgroup'
+colnames(data)[colnames(data) == 'KlantnummerSubnr'] <- 'CustomerId'
+colnames(data)[colnames(data) == 'ORDERNUMMER'] <- 'OrderId'
 
 length(unique(data$CustomerId))
 sum(is.na(data$CustomerId))
@@ -41,7 +63,9 @@ customers <- as.data.frame(unique(data$`CustomerId`))
 names(customers) <- "CustomerId"
 
 # Recency #
-data$recency2 <- as.Date("2018-03-18")
+data$recency2 <- as.Date(Sys.time())
+data$Orderdate <- as.character(data$Orderdate)
+data$Orderdate <- as.Date(data$Orderdate, format = "%Y%m%d")
 data$recency <- as.integer(difftime(data$recency2, data$Orderdate, units="weeks"))
 recency <- unique(setDT(data)[order(data$recency)], by = "CustomerId")
 recency <- subset(recency, select=c("CustomerId", "recency"))
@@ -129,11 +153,12 @@ scatter.3 <- scatter.3 + ylab("Z-scored Monetary Value of Customer")
 scatter.3
 
 remove(scatter.1, scatter.2, scatter.3)
-preprocessed <- subset(customers, select = c(recency.z, frequency.z, monetary.z))
+preprocessed <- subset(customers, select = c(CustomerId, recency.z, frequency.z, monetary.z))
 preprocessed <- subset(preprocessed, !is.na(preprocessed$recency.z))
 preprocessed <- subset(preprocessed, !is.na(preprocessed$frequency.z))
 preprocessed <- subset(preprocessed, !is.na(preprocessed$monetary.z))
-
+customers <- subset(customers, CustomerId %in% as.vector(preprocessed$CustomerId))
+preprocessed <- subset(preprocessed, select = c(recency.z, frequency.z, monetary.z))
 
 j <- 16 # specify the maximum number of clusters you want to try out
 
@@ -238,7 +263,7 @@ library(rgl)
 
 colors <- c('red','orange','green3','deepskyblue','blue','darkorchid4','violet','pink1',
             'tan3','black', 'darkgreen', 'purple','brown', 'darkred', 'skyblue', 'limegreen', 'yellow')
-scatter3d(x = customers$frequency.log,
+scat3d <-scatter3d(x = customers$frequency.log,
           y = customers$monetary.log,
           z = customers$recency.log,
           groups = customers$cluster_15,
@@ -255,6 +280,10 @@ scatter3d(x = customers$frequency.log,
           #webgl = TRUE,
           axis.col = c("black", "black", "black"))
         #remove(colors)
+
+
+
+
 
 ########################################################################
 customers <- subset(customers, select=c("CustomerId", "cluster_15"))
