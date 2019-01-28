@@ -4,3 +4,6 @@
 .Ruserdata
 Datasets/
 RFM.Rproj
+.httr-oauth
+*.lock
+*.log
