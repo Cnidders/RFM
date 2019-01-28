@@ -6,46 +6,56 @@ library(stringr)
 library(data.table)
 library(dplyr)
 library(ISOweek)
+library(rpivotTable)
 
 source("/home/c.stienen/Info/DelphiDBIconnect.R")
-data <- dbGetQuery(Delphi,"SELECT        OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, SUBKLANT.KLANTNUMMER, SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER AS Expr1, SUBKLANT.MARKETING_NUMMER, 
-                         SUBKLANT.MARKETING_OMSCHRIJVING, SK_DOELGROEP.DGPCODE, SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, PRODUCT_HIERARCHIE.NIVEAU_01, 
-                 PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03, FACTUURREGEL.ORDERNUMMER, FACTUURREGEL.ORDERDATUM_ID, SUM(FACTUURREGEL.NETTO_FACTUURREGELBEDRAG) AS Expr2, 
-                 COUNT(FACTUURREGEL.FACTUURREGEL_ID) AS Expr3, SUM(FACTUURREGEL.AANTAL) AS Expr4, 
-                 SUM(CASE WHEN FACTUURREGEL.TE_FACTUREREN_GEWICHT = 0 THEN FACTUURREGEL.AANTAL_STANDAARD_EENH ELSE FACTUURREGEL.TE_FACTUREREN_GEWICHT END) AS Expr5
-                 FROM            Budget.dbo.Doelgroep AS SK_DOELGROEP RIGHT OUTER JOIN
-                 Dwh.DIM_SUBKLANT AS SUBKLANT ON SK_DOELGROEP.MKSCODE = SUBKLANT.MARKETINGSEGMENTCODE INNER JOIN
-                 Dwh.FACT_FACTUURREGEL AS FACTUURREGEL ON SUBKLANT.SUBKLANT_ID = FACTUURREGEL.SUBKLANT_ID INNER JOIN
-                 Dwh.DIM_FACTURERINGSSOORT AS FACTURERINGSSOORT ON FACTURERINGSSOORT.FACTURERINGSSOORT_ID = FACTUURREGEL.FACTURERINGSSOORT_ID INNER JOIN
-                 Dwh.DIM_DATUM AS OMZETDATUM ON OMZETDATUM.DATUM_ID = FACTUURREGEL.OMZETDATUM_ID INNER JOIN
-                 Dwh.DIM_ARTIKEL AS ARTIKEL ON FACTUURREGEL.ARTIKEL_ID = ARTIKEL.ARTIKEL_ID INNER JOIN
-                 Dwh.DIM_PRODHIERARCHIE AS PRODUCT_HIERARCHIE ON PRODUCT_HIERARCHIE.PRODUCTHIERARCHIE_CODE = ARTIKEL.PRODUCTHIERARCHIE
-                 WHERE        (OMZETDATUM.AANTAL_STATISTIEK_WEKEN_GELEDEN BETWEEN - 52 AND - 1) AND (FACTURERINGSSOORT.FACTURERINGSSOORT NOT IN ('005', '009')) AND (ARTIKEL.HOOFDPRODUKTGROEP_NIVEAU_1 <> '07') AND 
-                 (SUBKLANT.KLANTCODE <> '6')
-                 GROUP BY OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, SUBKLANT.KLANTNUMMER, SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER, SUBKLANT.MARKETING_NUMMER, 
-                 SUBKLANT.MARKETING_OMSCHRIJVING, SK_DOELGROEP.DGPCODE, SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, PRODUCT_HIERARCHIE.NIVEAU_01, 
-                 PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03, FACTUURREGEL.ORDERNUMMER, FACTUURREGEL.ORDERDATUM_ID")
-dbDisconnect(Delphi)
+data <- dbGetQuery(Delphi,"SELECT        OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, FACTUURREGEL.ORDERDATUM_ID, FACTUURREGEL.ORDERNUMMER, 
+                         SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER AS CustomerId, SUBKLANT.KLANTNUMMER, SUBKLANT.PRIJSLIJNNUMMER, SUBKLANT.ACTIEPRIJZEN, SK_DOELGROEP.DGPCODE, 
+                   SUBKLANT.MARKETING_NUMMER, SUBKLANT.MARKETING_OMSCHRIJVING, SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, 
+                   CASE WHEN (ARTIKEL.SUBPRODUKTGROEP_NIVEAU_6 = '75') THEN 'TRUE' ELSE 'FALSE' END AS PL, ARTIKEL.INDICATIE_COMPANY_WIDE_SANEREN, PRODUCT_HIERARCHIE.NIVEAU_01, 
+                   PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03, SUM(FACTUURREGEL.NETTO_FACTUURREGELBEDRAG) AS nettoFactuurOmzet, COUNT(FACTUURREGEL.FACTUURREGEL_ID) AS aantalFactuurregels, 
+                   SUM(FACTUURREGEL.AANTAL) AS aantalVkeh, SUM(CASE WHEN FACTUURREGEL.TE_FACTUREREN_GEWICHT = 0 THEN FACTUURREGEL.AANTAL_STANDAARD_EENH ELSE FACTUURREGEL.TE_FACTUREREN_GEWICHT END)
+                   AS aantalSteh
+                   FROM            Budget.dbo.Doelgroep AS SK_DOELGROEP RIGHT OUTER JOIN
+                   Dwh.DIM_SUBKLANT AS SUBKLANT ON SK_DOELGROEP.MKSCODE = SUBKLANT.MARKETINGSEGMENTCODE INNER JOIN
+                   Dwh.FACT_FACTUURREGEL AS FACTUURREGEL ON SUBKLANT.SUBKLANT_ID = FACTUURREGEL.SUBKLANT_ID INNER JOIN
+                   Dwh.DIM_FACTURERINGSSOORT AS FACTURERINGSSOORT ON FACTURERINGSSOORT.FACTURERINGSSOORT_ID = FACTUURREGEL.FACTURERINGSSOORT_ID INNER JOIN
+                   Dwh.DIM_DATUM AS OMZETDATUM ON OMZETDATUM.DATUM_ID = FACTUURREGEL.OMZETDATUM_ID INNER JOIN
+                   Dwh.DIM_ARTIKEL AS ARTIKEL ON FACTUURREGEL.ARTIKEL_ID = ARTIKEL.ARTIKEL_ID INNER JOIN
+                   Dwh.DIM_PRODHIERARCHIE AS PRODUCT_HIERARCHIE ON PRODUCT_HIERARCHIE.PRODUCTHIERARCHIE_CODE = ARTIKEL.PRODUCTHIERARCHIE
+                   WHERE        (OMZETDATUM.AANTAL_STATISTIEK_WEKEN_GELEDEN BETWEEN - 52 AND - 1) AND (FACTURERINGSSOORT.FACTURERINGSSOORT NOT IN ('005', '009')) AND (ARTIKEL.HOOFDPRODUKTGROEP_NIVEAU_1 <> '07') AND 
+                   (SUBKLANT.KLANTCODE <> '6')
+                   GROUP BY OMZETDATUM.STATISTIEKJAAR_NUMERIEK, OMZETDATUM.STATISTIEKWEEK, FACTUURREGEL.ORDERDATUM_ID, FACTUURREGEL.ORDERNUMMER, SUBKLANT.KLANTNUMMER + SUBKLANT.SUBKLANTNUMMER, 
+                   SUBKLANT.KLANTNUMMER, SUBKLANT.PRIJSLIJNNUMMER, SUBKLANT.ACTIEPRIJZEN, SK_DOELGROEP.DGPCODE, SUBKLANT.MARKETING_NUMMER, SUBKLANT.MARKETING_OMSCHRIJVING, 
+                   SUBKLANT.CC_NUMMER_KLANT, ARTIKEL.ARTIKELNUMMER, ARTIKEL.MERKNAAM_VOLUIT, CASE WHEN (ARTIKEL.SUBPRODUKTGROEP_NIVEAU_6 = '75') THEN 'TRUE' ELSE 'FALSE' END, 
+                   ARTIKEL.INDICATIE_COMPANY_WIDE_SANEREN, PRODUCT_HIERARCHIE.NIVEAU_01, PRODUCT_HIERARCHIE.NIVEAU_02, PRODUCT_HIERARCHIE.NIVEAU_03")
 rm(Delphi)
-
-
 #View(data)
-str(data)
-data$`ORDERDATUM_ID` <- as.Date(data$`ORDERDATUM_ID`)
-colnames(data)[colnames(data) == 'Expr1'] <- "KlantnummerSubnr"
-colnames(data)[colnames(data) == 'Expr2'] <- "nettoFactuurOmzet"
-colnames(data)[colnames(data) == 'Expr3'] <- "aantalFactuurregels"
-colnames(data)[colnames(data) == 'Expr4'] <- "aantalVkeh"
-colnames(data)[colnames(data) == 'Expr5'] <- "aantalSteh"
 
+
+#Date format change
+data$date <- str_extract_all(data$ORDERDATUM_ID, "^[0-9]{4}")
+data$date2 <- str_extract_all(data$ORDERDATUM_ID, "^[0-9]{6}")
+data$date2 <- str_extract_all(data$ORDERDATUM_ID, "[0-9]{2}$")
+data$date3 <- str_extract_all(data$ORDERDATUM_ID, "[0-9]{2}$")
+data$date <- paste(data$date, data$date2, data$date3, sep = "-")
+data$`ORDERDATUM_ID` <- as.Date(data$date, format = "%Y-%M-%d")
+
+#Create backup for testing
 dataBackup <- data
 data <- dataBackup
-data <- subset(data, DGPCODE == 6)
+head(data)
+
+
+data <- subset(data, (PRIJSLIJNNUMMER == 40 & 
+                        ACTIEPRIJZEN == "J" &
+                        !(MARKETING_OMSCHRIJVING %in% as.vector(c("CONTR.CAT BEDRIJVEN", "CONTR.CAT RECREATIE", "CONTR.CAT ZORG",
+                                                                  "CONTR/EVENTCATERING", "AZIATISCH CAFETARIA")) &
+                            DGPCODE != 3)))
 
 colnames(data)[colnames(data) == 'nettoFactuurOmzet'] <- 'Revenue'
 colnames(data)[colnames(data) == 'ORDERDATUM_ID'] <- 'Orderdate'
 colnames(data)[colnames(data) == 'MARKETING_OMSCHRIJVING'] <- 'Salesgroup'
-colnames(data)[colnames(data) == 'KlantnummerSubnr'] <- 'CustomerId'
 colnames(data)[colnames(data) == 'ORDERNUMMER'] <- 'OrderId'
 
 length(unique(data$CustomerId))
@@ -65,7 +75,6 @@ names(customers) <- "CustomerId"
 # Recency #
 data$recency2 <- as.Date(Sys.time())
 data$Orderdate <- as.character(data$Orderdate)
-data$Orderdate <- as.Date(data$Orderdate, format = "%Y%m%d")
 data$recency <- as.integer(difftime(data$recency2, data$Orderdate, units="weeks"))
 recency <- unique(setDT(data)[order(data$recency)], by = "CustomerId")
 recency <- subset(recency, select=c("CustomerId", "recency"))
@@ -263,7 +272,8 @@ library(rgl)
 
 colors <- c('red','orange','green3','deepskyblue','blue','darkorchid4','violet','pink1',
             'tan3','black', 'darkgreen', 'purple','brown', 'darkred', 'skyblue', 'limegreen', 'yellow')
-scat3d <-scatter3d(x = customers$frequency.log,
+scat3D <- scatter3d(
+          x = customers$frequency.log,
           y = customers$monetary.log,
           z = customers$recency.log,
           groups = customers$cluster_15,
@@ -280,17 +290,18 @@ scat3d <-scatter3d(x = customers$frequency.log,
           #webgl = TRUE,
           axis.col = c("black", "black", "black"))
         #remove(colors)
+print(scat3D)
 
-
-
+summary(customers)
 
 
 ########################################################################
 customers <- subset(customers, select=c("CustomerId", "cluster_15"))
-data <- merge(data, customers, by="CustomerId", all=TRUE, sort=TRUE, na.rm=TRUE)
+data <- merge(data, customers, by = "CustomerId", all=TRUE, sort=TRUE, na.rm=TRUE, no.dups = TRUE)
 colnames(data)[colnames(data) == 'cluster_15'] <- 'Cluster'
-colnames(data)[colnames(data) == 'Count Order Line Items'] <- 'Orderlines'
 
+#colnames(data)[colnames(data) == 'Count Order Line Items'] <- 'Orderlines'
+   
 clusters <- subset(data, select=c("CustomerId", "Cluster"))
 clusters$frequency <- "1"
 clusters$frequency <- as.integer(clusters$frequency)
@@ -299,17 +310,36 @@ clusters <- aggregate(frequency ~ Cluster, data=clusters, FUN=sum, na.rm=TRUE, s
 print(clusters)
 
 data <- subset(data, !is.na(data$Cluster))
-colnames(data)[colnames(data) == 'Product Hiërarchie (Lvl 01)'] <- 'Lvl01'
-colnames(data)[colnames(data) == 'Product Hiërarchie (Lvl 01- Lvl 02)'] <- 'Lvl02'
-colnames(data)[colnames(data) == 'Product Hiërarchie (Lvl 01- Lvl 02 - Lvl 03)'] <- 'Lvl03'
+colnames(data)[colnames(data) == 'NIVEAU_01'] <- 'Lvl01'
+colnames(data)[colnames(data) == 'NIVEAU_02'] <- 'Lvl02'
+colnames(data)[colnames(data) == 'NIVEAU_03'] <- 'Lvl03'
 data <- subset(data, data$Lvl01 < 200)
 #write.csv2(data2, "data2.csv")
 
 # Create customer-level datasets for exploration & visualisation #
-data2 <- subset(data, select=c("CustomerId", "Lvl01", "Orderlines"))
+data2 <- subset(data, select=c("CustomerId", "Lvl01", "aantalFactuurregels", "Salesgroup"))
+data2$aantalFactuurregels <- as.integer(data2$aantalFactuurregels)
 Lvl01 <- as.list(unique(data$Lvl01))
 data2 <- merge(data2, customers, by="CustomerId", all=TRUE, sort=TRUE)
-data2 <- aggregate(Orderlines ~ Cluster + Lvl01, data=data, FUN=sum, na.rm=TRUE)
+data2 <- aggregate(aantalFactuurregels ~ ., data = data2, FUN=sum, na.rm=TRUE)
+
+rpivotTable(data = data2,
+            rows = c("Lvl01"),
+            cols = "cluster_15",
+#           aggregatorName = ,
+            vals = "aantalFactuurregels",
+            rendererName = "Table")
+
+
+rpivotTable(data = data2,
+            rows = c("Salesgroup"),
+            cols = "cluster_15",
+            #           aggregatorName = ,
+            vals = "aantalFactuurregels",
+            rendererName = "Table")
+
+
+
 
 qplot(data2$Cluster)
 scatter.1 <- ggplot(data2, aes(x = data2$Cluster, y = data2$Orderlines))
